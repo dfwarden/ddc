@@ -2,8 +2,9 @@ import random
 
 import tensorflow as tf
 import numpy as np
+from functools import reduce
 
-dtype = tf.float32
+dtype = tf.compat.v1.float32
 np_dtype = dtype.as_numpy_dtype
 
 class OnsetNet:
@@ -50,25 +51,25 @@ class OnsetNet:
         export_feat_tensors = {}
 
         # Input tensors
-        feats_audio_nunroll = tf.placeholder(dtype, shape=[batch_size, rnn_nunroll + zack_hack, audio_context_len, audio_nbands, audio_nchannels], name='feats_audio')
-        feats_other_nunroll = tf.placeholder(dtype, shape=[batch_size, rnn_nunroll, nfeats], name='feats_other')
-        print 'feats_audio: {}'.format(feats_audio_nunroll.get_shape())
-        print 'feats_other: {}'.format(feats_other_nunroll.get_shape())
+        feats_audio_nunroll = tf.compat.v1.placeholder(dtype, shape=[batch_size, rnn_nunroll + zack_hack, audio_context_len, audio_nbands, audio_nchannels], name='feats_audio')
+        feats_other_nunroll = tf.compat.v1.placeholder(dtype, shape=[batch_size, rnn_nunroll, nfeats], name='feats_other')
+        print('feats_audio: {}'.format(feats_audio_nunroll.get_shape()))
+        print('feats_other: {}'.format(feats_other_nunroll.get_shape()))
 
         if mode != 'gen':
-            targets_nunroll = tf.placeholder(dtype, shape=[batch_size, rnn_nunroll])
-            # TODO: tf.ones acts as an overridable placeholder but this is still awkward
-            target_weights_nunroll = tf.ones([batch_size, rnn_nunroll], dtype)
+            targets_nunroll = tf.compat.v1.placeholder(dtype, shape=[batch_size, rnn_nunroll])
+            # TODO: tf.compat.v1.ones acts as an overridable placeholder but this is still awkward
+            target_weights_nunroll = tf.compat.v1.ones([batch_size, rnn_nunroll], dtype)
 
         # Reshape input tensors to remove nunroll dim; will briefly restore later during RNN if necessary
         if cnn_rnn_zack:
-            feats_audio = tf.reshape(feats_audio_nunroll, shape=[batch_size, rnn_nunroll + zack_hack, audio_nbands, audio_nchannels])
+            feats_audio = tf.compat.v1.reshape(feats_audio_nunroll, shape=[batch_size, rnn_nunroll + zack_hack, audio_nbands, audio_nchannels])
         else:
-            feats_audio = tf.reshape(feats_audio_nunroll, shape=[batch_size * rnn_nunroll, audio_context_len, audio_nbands, audio_nchannels])
-        feats_other = tf.reshape(feats_other_nunroll, shape=[batch_size * rnn_nunroll, nfeats])
+            feats_audio = tf.compat.v1.reshape(feats_audio_nunroll, shape=[batch_size * rnn_nunroll, audio_context_len, audio_nbands, audio_nchannels])
+        feats_other = tf.compat.v1.reshape(feats_other_nunroll, shape=[batch_size * rnn_nunroll, nfeats])
         if mode != 'gen':
-            targets = tf.reshape(targets_nunroll, shape=[batch_size * rnn_nunroll])
-            target_weights = tf.reshape(target_weights_nunroll, shape=[batch_size * rnn_nunroll])
+            targets = tf.compat.v1.reshape(targets_nunroll, shape=[batch_size * rnn_nunroll])
+            target_weights = tf.compat.v1.reshape(target_weights_nunroll, shape=[batch_size * rnn_nunroll])
 
         # CNN
         cnn_output = feats_audio
@@ -77,21 +78,21 @@ class OnsetNet:
             nfilt_last = audio_nchannels
             for i, ((ntime, nband, nfilt), (ptime, pband)) in enumerate(zip(cnn_filter_shapes, cnn_pool)):
                 layer_name = 'cnn_{}'.format(i)
-                with tf.variable_scope(layer_name):
-                    filters = tf.get_variable('filters', [ntime, nband, nfilt_last, nfilt], initializer=cnn_init, dtype=dtype)
-                    biases = tf.get_variable('biases', [nfilt], initializer=tf.constant_initializer(0.1), dtype=dtype)
+                with tf.compat.v1.variable_scope(layer_name):
+                    filters = tf.compat.v1.get_variable('filters', [ntime, nband, nfilt_last, nfilt], initializer=cnn_init, dtype=dtype)
+                    biases = tf.compat.v1.get_variable('biases', [nfilt], initializer=tf.compat.v1.constant_initializer(0.1), dtype=dtype)
                 if cnn_rnn_zack:
                     padding = 'SAME'
                 else:
                     padding = 'VALID'
 
-                conv = tf.nn.conv2d(layer_last, filters, [1, 1, 1, 1], padding=padding)
-                biased = tf.nn.bias_add(conv, biases)
-                convolved = tf.nn.relu(biased)
+                conv = tf.compat.v1.nn.conv2d(layer_last, filters, [1, 1, 1, 1], padding=padding)
+                biased = tf.compat.v1.nn.bias_add(conv, biases)
+                convolved = tf.compat.v1.nn.relu(biased)
 
                 pool_shape = [1, ptime, pband, 1]
-                pooled = tf.nn.max_pool(convolved, ksize=pool_shape, strides=pool_shape, padding='SAME')
-                print '{}: {}'.format(layer_name, pooled.get_shape())
+                pooled = tf.compat.v1.nn.max_pool(convolved, ksize=pool_shape, strides=pool_shape, padding='SAME')
+                print('{}: {}'.format(layer_name, pooled.get_shape()))
 
                 export_feat_tensors[layer_name] = pooled
 
@@ -106,62 +107,62 @@ class OnsetNet:
         zack_hack_div_2 = 0
         if cnn_rnn_zack:
             zack_hack_div_2 = zack_hack // 2
-            cnn_output = tf.slice(cnn_output, [0, zack_hack_div_2, 0, 0], [-1, rnn_nunroll, -1, -1])
+            cnn_output = tf.compat.v1.slice(cnn_output, [0, zack_hack_div_2, 0, 0], [-1, rnn_nunroll, -1, -1])
             nfeats_conv = reduce(lambda x, y: x * y, [int(x) for x in cnn_output.get_shape()[-2:]])
         else:
             nfeats_conv = reduce(lambda x, y: x * y, [int(x) for x in cnn_output.get_shape()[-3:]])
-        feats_conv = tf.reshape(cnn_output, [batch_size * rnn_nunroll, nfeats_conv])
+        feats_conv = tf.compat.v1.reshape(cnn_output, [batch_size * rnn_nunroll, nfeats_conv])
         nfeats_tot = nfeats_conv + nfeats
-        feats_all = tf.concat([feats_conv, feats_other], axis=1)
-        print 'feats_cnn: {}'.format(feats_conv.get_shape())
-        print 'feats_all: {}'.format(feats_all.get_shape())
+        feats_all = tf.compat.v1.concat([feats_conv, feats_other], axis=1)
+        print('feats_cnn: {}'.format(feats_conv.get_shape()))
+        print('feats_all: {}'.format(feats_all.get_shape()))
 
         # Project to RNN size
         rnn_output = feats_all
         rnn_output_size = nfeats_tot
         if do_rnn:
-            with tf.variable_scope('rnn_proj'):
-                rnn_proj_w = tf.get_variable('W', [nfeats_tot, rnn_size], initializer=tf.uniform_unit_scaling_initializer(factor=1.0, dtype=dtype), dtype=dtype)
-                rnn_proj_b = tf.get_variable('b', [rnn_size], initializer=tf.constant_initializer(0.0), dtype=dtype)
+            with tf.compat.v1.variable_scope('rnn_proj'):
+                rnn_proj_w = tf.compat.v1.get_variable('W', [nfeats_tot, rnn_size], initializer=tf.compat.v1.uniform_unit_scaling_initializer(factor=1.0, dtype=dtype), dtype=dtype)
+                rnn_proj_b = tf.compat.v1.get_variable('b', [rnn_size], initializer=tf.compat.v1.constant_initializer(0.0), dtype=dtype)
 
-            rnn_inputs = tf.nn.bias_add(tf.matmul(feats_all, rnn_proj_w), rnn_proj_b)
-            rnn_inputs = tf.reshape(rnn_inputs, [batch_size, rnn_nunroll, rnn_size])
-            rnn_inputs = tf.split(rnn_inputs, rnn_nunroll, axis=1)
-            rnn_inputs = [tf.squeeze(input_, [1]) for input_ in rnn_inputs]
+            rnn_inputs = tf.compat.v1.nn.bias_add(tf.compat.v1.matmul(feats_all, rnn_proj_w), rnn_proj_b)
+            rnn_inputs = tf.compat.v1.reshape(rnn_inputs, [batch_size, rnn_nunroll, rnn_size])
+            rnn_inputs = tf.compat.v1.split(rnn_inputs, rnn_nunroll, axis=1)
+            rnn_inputs = [tf.compat.v1.squeeze(input_, [1]) for input_ in rnn_inputs]
 
             if rnn_cell_type == 'rnn':
-                cell_fn = tf.nn.rnn_cell.BasicRNNCell
+                cell_fn = tf.compat.v1.nn.rnn_cell.BasicRNNCell
             elif rnn_cell_type == 'gru':
-                cell_fn = tf.nn.rnn_cell.GRUCell
+                cell_fn = tf.compat.v1.nn.rnn_cell.GRUCell
             elif rnn_cell_type == 'lstm':
-                cell_fn = tf.nn.rnn_cell.BasicLSTMCell
+                cell_fn = tf.compat.v1.nn.rnn_cell.BasicLSTMCell
             else:
                 raise NotImplementedError()
             cell = cell_fn(rnn_size)
 
             if mode == 'train' and rnn_keep_prob < 1.0:
-                cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=rnn_keep_prob)
+                cell = tf.compat.v1.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=rnn_keep_prob)
 
             if rnn_nlayers > 1:
-                cell = tf.nn.rnn_cell.MultiRNNCell([cell] * rnn_nlayers)
+                cell = tf.compat.v1.nn.rnn_cell.MultiRNNCell([cell] * rnn_nlayers)
 
             initial_state = cell.zero_state(batch_size, dtype)
 
             # RNN
             # TODO: weight init
-            with tf.variable_scope('rnn_unroll'):
+            with tf.compat.v1.variable_scope('rnn_unroll'):
                 state = initial_state
                 outputs = []
-                for i in xrange(rnn_nunroll):
+                for i in range(rnn_nunroll):
                     if i > 0:
-                        tf.get_variable_scope().reuse_variables()
+                        tf.compat.v1.get_variable_scope().reuse_variables()
                     (cell_output, state) = cell(rnn_inputs[i], state)
                     outputs.append(cell_output)
                 final_state = state
 
-            rnn_output = tf.reshape(tf.concat(outputs, axis=1), [batch_size * rnn_nunroll, rnn_size])
+            rnn_output = tf.compat.v1.reshape(tf.compat.v1.concat(outputs, axis=1), [batch_size * rnn_nunroll, rnn_size])
             rnn_output_size = rnn_size
-        print 'rnn_output: {}'.format(rnn_output.get_shape())
+        print('rnn_output: {}'.format(rnn_output.get_shape()))
 
         # Dense NN
         dnn_output = rnn_output
@@ -171,23 +172,23 @@ class OnsetNet:
             last_layer_size = rnn_output_size
             for i, layer_size in enumerate(dnn_sizes):
                 layer_name = 'dnn_{}'.format(i)
-                with tf.variable_scope(layer_name):
-                    dnn_w = tf.get_variable('W', shape=[last_layer_size, layer_size], initializer=dnn_init, dtype=dtype)
-                    dnn_b = tf.get_variable('b', shape=[layer_size], initializer=tf.constant_initializer(0.0), dtype=dtype)
-                projected = tf.nn.bias_add(tf.matmul(last_layer, dnn_w), dnn_b)
+                with tf.compat.v1.variable_scope(layer_name):
+                    dnn_w = tf.compat.v1.get_variable('W', shape=[last_layer_size, layer_size], initializer=dnn_init, dtype=dtype)
+                    dnn_b = tf.compat.v1.get_variable('b', shape=[layer_size], initializer=tf.compat.v1.constant_initializer(0.0), dtype=dtype)
+                projected = tf.compat.v1.nn.bias_add(tf.compat.v1.matmul(last_layer, dnn_w), dnn_b)
                 # TODO: argument nonlinearity, change bias to 0.1 if relu
                 if dnn_nonlin == 'tanh':
-                    last_layer = tf.nn.tanh(projected)
+                    last_layer = tf.compat.v1.nn.tanh(projected)
                 elif dnn_nonlin == 'sigmoid':
-                    last_layer = tf.nn.sigmoid(projected)
+                    last_layer = tf.compat.v1.nn.sigmoid(projected)
                 elif dnn_nonlin == 'relu':
-                    last_layer = tf.nn.relu(projected)
+                    last_layer = tf.compat.v1.nn.relu(projected)
                 else:
                     raise NotImplementedError()
                 if mode == 'train' and dnn_keep_prob < 1.0:
-                    last_layer = tf.nn.dropout(last_layer, dnn_keep_prob)
+                    last_layer = tf.compat.v1.nn.dropout(last_layer, dnn_keep_prob)
                 last_layer_size = layer_size
-                print '{}: {}'.format(layer_name, last_layer.get_shape())
+                print('{}: {}'.format(layer_name, last_layer.get_shape()))
 
                 export_feat_tensors[layer_name] = last_layer
 
@@ -195,44 +196,44 @@ class OnsetNet:
             dnn_output_size = last_layer_size
 
         # Logistic regression
-        with tf.variable_scope('logit') as scope:
-            logit_w = tf.get_variable('W', shape=[dnn_output_size, 1], initializer=tf.truncated_normal_initializer(stddev=1.0 / dnn_output_size, dtype=dtype), dtype=dtype)
-            logit_b = tf.get_variable('b', shape=[1], initializer=tf.constant_initializer(0.0), dtype=dtype)
-        logits = tf.squeeze(tf.nn.bias_add(tf.matmul(dnn_output, logit_w), logit_b), squeeze_dims=[1])
-        prediction = tf.nn.sigmoid(logits)
-        prediction_inspect = tf.reshape(prediction, [batch_size, rnn_nunroll])
-        prediction_final = tf.squeeze(tf.slice(prediction_inspect, [0, rnn_nunroll - 1], [-1, 1]), squeeze_dims=[1])
-        print 'logit: {}'.format(logits.get_shape())
+        with tf.compat.v1.variable_scope('logit') as scope:
+            logit_w = tf.compat.v1.get_variable('W', shape=[dnn_output_size, 1], initializer=tf.compat.v1.truncated_normal_initializer(stddev=1.0 / dnn_output_size, dtype=dtype), dtype=dtype)
+            logit_b = tf.compat.v1.get_variable('b', shape=[1], initializer=tf.compat.v1.constant_initializer(0.0), dtype=dtype)
+        logits = tf.compat.v1.squeeze(tf.compat.v1.nn.bias_add(tf.compat.v1.matmul(dnn_output, logit_w), logit_b), squeeze_dims=[1])
+        prediction = tf.compat.v1.nn.sigmoid(logits)
+        prediction_inspect = tf.compat.v1.reshape(prediction, [batch_size, rnn_nunroll])
+        prediction_final = tf.compat.v1.squeeze(tf.compat.v1.slice(prediction_inspect, [0, rnn_nunroll - 1], [-1, 1]), squeeze_dims=[1])
+        print('logit: {}'.format(logits.get_shape()))
 
         # Compute loss
         if mode != 'gen':
-            neg_log_lhoods = tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=targets)
+            neg_log_lhoods = tf.compat.v1.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=targets)
             if target_weight_strategy == 'rect':
-                avg_neg_log_lhood = tf.reduce_mean(neg_log_lhoods)
+                avg_neg_log_lhood = tf.compat.v1.reduce_mean(neg_log_lhoods)
             else:
-                neg_log_lhoods = tf.multiply(neg_log_lhoods, target_weights)
+                neg_log_lhoods = tf.compat.v1.multiply(neg_log_lhoods, target_weights)
                 # be careful to have at least one weight be nonzero
                 # should we be taking the mean elem-wise by batch? i think this is a big bug
-                avg_neg_log_lhood = tf.reduce_sum(neg_log_lhoods) / tf.reduce_sum(target_weights)
-            neg_log_lhoods_inspect = tf.reshape(neg_log_lhoods, [batch_size, rnn_nunroll])
+                avg_neg_log_lhood = tf.compat.v1.reduce_sum(neg_log_lhoods) / tf.compat.v1.reduce_sum(target_weights)
+            neg_log_lhoods_inspect = tf.compat.v1.reshape(neg_log_lhoods, [batch_size, rnn_nunroll])
 
         # Train op
         if mode == 'train':
-            lr = tf.Variable(0.0, trainable=False)
+            lr = tf.compat.v1.Variable(0.0, trainable=False)
             self._lr = lr
-            self._lr_summary = tf.summary.scalar('learning_rate', self._lr)
+            self._lr_summary = tf.compat.v1.summary.scalar('learning_rate', self._lr)
 
-            tvars = tf.trainable_variables()
-            grads = tf.gradients(avg_neg_log_lhood, tvars)
+            tvars = tf.compat.v1.trainable_variables()
+            grads = tf.compat.v1.gradients(avg_neg_log_lhood, tvars)
             if grad_clip > 0.0:
-                grads, _ = tf.clip_by_global_norm(grads, grad_clip)
+                grads, _ = tf.compat.v1.clip_by_global_norm(grads, grad_clip)
 
             if opt == 'sgd':
-                optimizer = tf.train.GradientDescentOptimizer(lr)
+                optimizer = tf.compat.v1.train.GradientDescentOptimizer(lr)
             else:
                 raise NotImplementedError()
 
-            train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=tf.contrib.framework.get_or_create_global_step())
+            train_op = optimizer.apply_gradients(list(zip(grads, tvars)), global_step=tf.compat.v1.train.get_or_create_global_step())
 
         # Tensor exports
         self.feats_audio = feats_audio_nunroll
@@ -261,14 +262,14 @@ class OnsetNet:
 
     def assign_lr(self, sess, lr_new):
         assert self.mode == 'train'
-        sess.run(tf.assign(self._lr, lr_new))
+        sess.run(tf.compat.v1.assign(self._lr, lr_new))
         return sess.run(self._lr_summary)
 
     def prepare_train_batch(self, charts, randomize_charts=False, **kwargs):
         # process kwargs
         exclude_kwarg_names = ['exclude_onset_neighbors', 'exclude_pre_onsets', 'exclude_post_onsets', 'include_onsets']
-        exclude_kwargs = {k:v for k,v in kwargs.items() if k in exclude_kwarg_names}
-        feat_kwargs = {k:v for k,v in kwargs.items() if k not in exclude_kwarg_names}
+        exclude_kwargs = {k:v for k,v in list(kwargs.items()) if k in exclude_kwarg_names}
+        feat_kwargs = {k:v for k,v in list(kwargs.items()) if k not in exclude_kwarg_names}
 
         # pick random chart and sample balanced classes
         if randomize_charts:
@@ -283,7 +284,7 @@ class OnsetNet:
             batch_feats_other = []
             batch_targets = []
             batch_target_weights = []
-            for _ in xrange(self.batch_size):
+            for _ in range(self.batch_size):
                 chart = charts[random.randint(0, len(charts) - 1)]
                 frame_idx = chart.sample(1, **exclude_kwargs)[0]
 
@@ -394,7 +395,7 @@ class OnsetNet:
             subseq_len = self.batch_size
             subseq_start = 0
 
-        for frame_idx in xrange(subseq_start, eval_chart.get_nframes(), subseq_len):
+        for frame_idx in range(subseq_start, eval_chart.get_nframes(), subseq_len):
             feat_kwargs['zack_hack_div_2'] = self.zack_hack_div_2
             audio, other, target = eval_chart.get_subsequence(frame_idx, subseq_len, np_dtype, **feat_kwargs)
 
