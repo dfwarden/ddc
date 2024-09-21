@@ -31,6 +31,9 @@ if __name__ == '__main__':
     pack_dirs = [os.path.join(args.packs_dir, pack_name) for pack_name in pack_names]
     pack_sm_globs = [os.path.join(pack_dir, '*', '*.sm') for pack_dir in pack_dirs]
 
+    # warden: debugging
+    #print(f'found pack_names {pack_names} and pack_dirs {pack_dirs}')
+
     if not os.path.isdir(args.json_dir):
         os.mkdir(args.json_dir)
 
@@ -143,4 +146,4 @@ if __name__ == '__main__':
                     smlog.error('Unicode error in {}'.format(sm_fp))
                     continue
 
-            print 'Parsed {} - {}: {} charts'.format(pack_name, sm_name, len(out_json['charts']))
+            print('Parsed {} - {}: {} charts'.format(pack_name, sm_name, len(out_json['charts'])))

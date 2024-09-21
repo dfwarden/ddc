@@ -80,7 +80,9 @@ def notes_parser(x):
     measures = [measure.splitlines() for measure in notes_split[5].split(',')]
     measures_clean = []
     for measure in measures:
-        measure_clean = filter(lambda pulse: not pulse.strip().startswith('//') and len(pulse.strip()) > 0, measure)
+        # warden: think this is a 2-to-3 issue where filter now returns iterable.
+        # try casting to list?
+        measure_clean = list(filter(lambda pulse: not pulse.strip().startswith('//') and len(pulse.strip()) > 0, measure))
         measures_clean.append(measure_clean)
     if len(measures_clean) > 0 and len(measures_clean[-1]) == 0:
         measures_clean = measures_clean[:-1]
@@ -93,7 +95,9 @@ def notes_parser(x):
             parlog.warning('Nonstandard subdivision {} detected, allowing'.format(len(measure)))
 
     chart_type = str_parser(notes_split[0])
-    if chart_type not in ['dance-single', 'dance-double', 'dance-couple', 'lights-cabinet']:
+    # warden: can we just add a new type and be happy?
+    #if chart_type not in ['dance-single', 'dance-double', 'dance-couple', 'lights-cabinet']:
+    if chart_type not in ['dance-single', 'dance-double', 'dance-couple', 'lights-cabinet', 'dance-solo']:
         raise ValueError('Nonstandard chart type {} detected'.format(chart_type))
 
     return (str_parser(notes_split[0]),
@@ -165,8 +169,10 @@ def parse_sm_txt(sm_txt):
         else:
             attrs[attr_name] = attr_val_parsed
 
+    # warden: python3 does not like below. Attempt dict comprehension
+    '''
     for attr_name, attr_val in attrs.items():
         if attr_val == None or attr_val == []:
             del attrs[attr_name]
-
-    return attrs
+    '''
+    return dict((attr_name, attr_val) for (attr_name, attr_val) in attrs.items() if attr_val is not None and attr_val != [])
